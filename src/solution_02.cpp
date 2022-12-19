@@ -1,3 +1,6 @@
+// Introduction to RTOS - Solution to Part 2 (FreeRTOS)
+// https://www.digikey.de/en/maker/projects/introduction-to-rtos-solution-to-part-2-freertos/b3f84c9c9455439ca2dcb8ccfce9dec5
+
 #include <Arduino.h>
 
 // USe only core 1 for demo
