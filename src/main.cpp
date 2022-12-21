@@ -1,4 +1,4 @@
-// Introduction to RTOS - Solution to Part 3 (FreeRTOS)
+// Introduction to RTOS - Solution to Part 4 (FreeRTOS)
 // https://www.digikey.de/en/maker/projects/introduction-to-rtos-solution-to-part-2-freertos/b3f84c9c9455439ca2dcb8ccfce9dec5
 
 #include <Arduino.h>
@@ -11,32 +11,33 @@ static const BaseType_t app_cpu = 0;
 static const BaseType_t app_cpu = 1;
 #endif
 
-// Settings
-static const uint8_t buf_len = 20;
-
-// Pins
-static const int led_pin = 5;
-
 // Globals
-static int led_delay = 500; // ms
-String inString = "";       // string to hold input
-
-int input;
-String buff;
+String inString = ""; // string to hold input
+static char *msg_ptr = NULL;
+static volatile uint8_t msg_flag = 0;
 
 //*****************************************************************
 // Tasks
 
 // Task: Blink LED at rate set by global variable
-void toggleLED(void *parameter)
+void print_to_serial(void *parameter)
 {
-
   while (1)
   {
-    digitalWrite(led_pin, HIGH);
-    vTaskDelay(led_delay / portTICK_PERIOD_MS);
-    digitalWrite(led_pin, LOW);
-    vTaskDelay(led_delay / portTICK_PERIOD_MS);
+    // Wait for flag to be set and print message
+    if (msg_flag == 1)
+    {
+      Serial.println(msg_ptr);
+
+      // Give amount of free heap memory (uncomment if you'd like to see it)
+      //      Serial.print("Free heap (bytes): ");
+      //      Serial.println(xPortGetFreeHeapSize());
+
+      // Free buffer, set pointer to null, and clear flag
+      vPortFree(msg_ptr);
+      msg_ptr = NULL;
+      msg_flag = 0;
+    }
   }
 }
 
@@ -62,17 +63,36 @@ void readSerial(void *parameters)
         // Serial.println(inString.toInt());
         Serial.print("You entered: ");
         Serial.println(inString);
-        led_delay = inString.toInt();
+        Serial.print("High water mark (words): ");
+        Serial.println(uxTaskGetStackHighWaterMark(NULL));
+
+        int count{0};
+        for (char x : inString)
+        {
+          ++count;
+        }
+        char *message_buff = new char[count];
+        int count2{0};
+        for (char x : inString)
+        {
+          message_buff[count2] = x;
+          count2++;
+        }
+        msg_ptr = message_buff;
+        // delete[] message_buff;
+        Serial.print("Buffer: ");
+        for (int i = 0; i < count; ++i)
+        {
+          Serial.print(msg_ptr[i]);
+        }
+        Serial.println();
+
         // clear the string for new input:
         inString = "";
-
+        msg_flag = 1;
       } // wait for data available
 
-      if (isDigit(c))
-      {
-        // convert the incoming byte to a char and add it to the string:
-        inString += c;
-      }
+      inString += c;
     }
   }
 }
@@ -86,24 +106,22 @@ void setup()
   // Configue Serial (go slow so we can watch the preemption)
   Serial.begin(115200);
 
-  pinMode(led_pin, OUTPUT);
-
   // Wait a moment to start (so we dont miss Serial output)
   vTaskDelay(1000 / portTICK_PERIOD_MS);
-  Serial.println("Multi-task LED Demo");
-  Serial.println("Enter a number in milliseconds to change the LED delay: ");
+  Serial.println("Memory Management Demo");
+  Serial.println("Enter a String: ");
 
-  // Start blink task
+  // Print message found in heap memory to Serial Monitor
   xTaskCreatePinnedToCore( // Use xTaskCreate() in vanilla FreeRTOS
-      toggleLED,           // Function to be called
-      "Toggle LED",        // Name of task
+      print_to_serial,     // Function to be called
+      "Print to Serial",   // Name of task
       1024,                // Stack size (bytes in ESP32, words in FreeRTOS)
       NULL,                // Parameter to pass
       1,                   // Task priority
       NULL,                // Task handle
       app_cpu);            // Run on one core for demo purposes (ESP32 only)
 
-  // Start serial read task
+  // Listen for input from Serial Monitor
   xTaskCreatePinnedToCore( // Use xTaskCreate() in vanilla FreeRTOS
       readSerial,          // Function to be called
       "Read Serial",       // Name of task
