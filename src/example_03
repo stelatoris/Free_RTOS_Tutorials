@@ -1,0 +1,112 @@
+// Introduction to RTOS - Example to Part 3 (FreeRTOS)
+// https://www.digikey.de/en/maker/projects/introduction-to-rtos-solution-to-part-2-freertos/b3f84c9c9455439ca2dcb8ccfce9dec5
+
+#include <Arduino.h>
+
+// USe only core 1 for demo
+#if CONFIG_FREERTOS_UNICORE
+static const BaseType_t app_cpu = 0;
+#else
+static const BaseType_t app_cpu = 1;
+#endif
+
+// Some string to print
+
+const char msg[] = "Barkadeer brig Arr booty rum.";
+
+// Task handles
+static TaskHandle_t task_1 = NULL;
+static TaskHandle_t task_2 = NULL;
+
+//*****************************************************************
+// Tasks
+
+// Task: print to Serial Terminal with lower priority
+void startTask1(void *parameter)
+{
+
+  // Count number of characters in string
+  int msg_len = strlen(msg);
+
+  // Print string to Terminal
+  while (1)
+  {
+    Serial.println();
+    for (int i = 0; i < msg_len; i++)
+    {
+      Serial.print(msg[i]);
+    }
+    Serial.println();
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+// Task: print to Serial Terminal with higher priority
+void startTask2(void *parameter)
+{
+  while (1)
+  {
+    Serial.print('*');
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+
+//*****************************************************************
+// Main (runs as its own task with priority 1 on core 1)
+
+void setup()
+{
+
+  // Configue Serial (go slow so we can watch the preemption)
+  Serial.begin(300);
+
+  // Wait a moment to start (so we dont miss Serial output)
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  Serial.println();
+  Serial.println("---FreeRTOS Task Demo---");
+
+  // Print self priority
+  Serial.print("Setup and loop task running on core ");
+  Serial.print(xPortGetCoreID());
+  Serial.print(" with priority ");
+  Serial.println(uxTaskPriorityGet(NULL));
+
+  // Task to run forever
+  xTaskCreatePinnedToCore( // Use xTaskCreate() in vanilla FreeRTOS
+      startTask1,          // Function to be called
+      "Task 1",            // Name of task
+      1024,                // Stack size (bytes in ESP32, words in FreRTOS)
+      NULL,                // Parameter to pass to function
+      1,                   // Task priority (0 to configMAX_PRIORITIES - 1)
+      &task_1,             // Task handle
+      app_cpu);            // Run on one core for demo (ESP32 only)
+
+  // Task to run once with higher priority
+  xTaskCreatePinnedToCore( // Use xTaskCreate() in vanilla FreeRTOS
+      startTask2,          // Function to be called
+      "Task 2",            // Name of task
+      1024,                // Stack size (bytes in ESP32, words in FreRTOS)
+      NULL,                // Parameter to pass to function
+      2,                   // Task priority (0 to configMAX_PRIORITIES - 1)
+      &task_2,             // Task handle
+      app_cpu);            // Run on one core for demo (ESP32 only)
+}
+
+void loop()
+{
+  // Suspend the higher priority task for some intervals
+  for (int i = 0; i < 3; i++)
+  {
+    vTaskSuspend(task_2);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskResume(task_2);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+  }
+
+  // Delete the lower priority task
+  if (task_1 != NULL)
+  {
+    vTaskDelete(task_1);
+    task_1 = NULL;
+  }
+}
